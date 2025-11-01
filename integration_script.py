@@ -83,18 +83,24 @@ def integrate_population(districts, population):
         return districts
     
     print(f"Found district column: {pop_district_col}")
-   # Standardize names - only if column exists
+    
+    # Standardize names - only if column exists
     if 'DISTRICT' in districts.columns:
         districts = standardize_district_names(districts, 'DISTRICT')
     if pop_district_col in population.columns:
         population = standardize_district_names(population, pop_district_col)
     
-    # Calculate area if not present
+    # Calculate area if not present - FIXED CALCULATION
     if 'area_sq_km' not in districts.columns:
-        districts['area_sq_km'] = districts.geometry.area / 1e6  # Convert to sq km
+        # Convert from degrees to sq km properly
+        districts_proj = districts.to_crs('EPSG:7755')  # India-specific projection in meters
+        districts['area_sq_km'] = districts_proj.geometry.area / 1e6  # Convert sq meters to sq km
     
     # Find population and coordinate columns
-    pop_col = next((col for col in population.columns if 'population' in col.lower()), None)
+    pop_col = next((col for col in population.columns if 'population' in col.lower() and '2011' in col.lower()), None)
+    if pop_col is None:
+        pop_col = next((col for col in population.columns if 'population' in col.lower()), None)
+    
     lat_col = next((col for col in population.columns if 'lat' in col.lower()), None)
     lon_col = next((col for col in population.columns if 'lon' in col.lower()), None)
     
@@ -131,15 +137,18 @@ def integrate_population(districts, population):
     if pop_district_col in districts.columns and pop_district_col != 'DISTRICT':
         districts.drop(columns=[pop_district_col], inplace=True)
     
-    # Calculate density
-    if 'population_2011' in districts.columns:
+    # Calculate density - ENSURE PROPER CALCULATION
+    if 'population_2011' in districts.columns and 'area_sq_km' in districts.columns:
+        # Ensure area is positive and non-zero
+        districts['area_sq_km'] = districts['area_sq_km'].replace(0, np.nan)
         districts['population_density'] = districts['population_2011'] / districts['area_sq_km']
+        
         print(f"✅ Population integrated for {districts['population_2011'].notna().sum()} districts")
+        print(f"📊 Population density range: {districts['population_density'].min():.2f} - {districts['population_density'].max():.2f}")
     else:
-        print("⚠️ Warning: Population column not found")
+        print("⚠️ Warning: Population or area column not found")
     
     return districts
-
 # ============================================================================
 # PHASE 2.2: EARTHQUAKE EVENT HISTORY INTEGRATION
 # ============================================================================
